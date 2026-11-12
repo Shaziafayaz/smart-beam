@@ -117,5 +117,3 @@ in.
 
 - Shazia Fayaz
 
-*Teammates can be added as collaborators on GitHub — their contributions
-will show on their own profiles.*
