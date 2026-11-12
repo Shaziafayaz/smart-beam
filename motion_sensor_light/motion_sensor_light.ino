@@ -1,6 +1,7 @@
 // ============================================================
 // Smart Beam - Zoned Automatic Motion-Sensing Lighting
 // Arduino Uno + HC-SR04 Ultrasonic Sensors + Relays + LEDs
+// Designed using Object-Oriented Programming (OOP) concepts.
 //
 // The room is divided into zones (bed area, cupboard area,
 // study area). Each zone has its own ultrasonic sensor and
@@ -12,33 +13,102 @@
 // Author: Shazia Fayaz
 // ============================================================
 
-// ---------- Zone definitions ----------
-// Each zone: name, TRIG pin, ECHO pin, RELAY pin
-const int NUM_ZONES = 3;
-
-const char* zoneNames[NUM_ZONES] = { "Bed Area", "Cupboard Area", "Study Area" };
-const int trigPins[NUM_ZONES]  = { 2, 5, 8 };   // HC-SR04 TRIG pins
-const int echoPins[NUM_ZONES]  = { 3, 6, 9 };   // HC-SR04 ECHO pins
-const int relayPins[NUM_ZONES] = { 4, 7, 10 };  // Relay IN pins
-
-// Enable/disable zones. Demo model: only the study area was used.
-const bool zoneEnabled[NUM_ZONES] = { false, false, true };
-
-// ---------- Detection parameters ----------
+// ---------- Global parameters ----------
 const int DETECTION_DISTANCE = 50;  // Detection range in cm
 const int CHECK_INTERVAL = 200;     // Check every 200 ms
 
-bool zoneOccupied[NUM_ZONES] = { false, false, false };
+// ============================================================
+// Class: MotionZone
+// Represents one area of the room with its own ultrasonic
+// sensor and relay-controlled light.
+// ============================================================
+class MotionZone {
+  public:
+    const char* name;
+    int trigPin;
+    int echoPin;
+    int relayPin;
+    bool enabled;
+
+    MotionZone(const char* zoneName, int trig, int echo, int relay, bool isEnabled)
+      : name(zoneName), trigPin(trig), echoPin(echo), relayPin(relay), enabled(isEnabled) {
+      occupied = false;
+    }
+
+    // Configure pins and ensure the light starts OFF
+    void begin() {
+      pinMode(trigPin, OUTPUT);
+      pinMode(echoPin, INPUT);
+      pinMode(relayPin, OUTPUT);
+      digitalWrite(relayPin, LOW);
+    }
+
+    // Measure distance, detect motion, and switch the light
+    void update() {
+      if (!enabled) return;
+
+      int distance = measureDistance();
+      bool detected = (distance > 0 && distance <= DETECTION_DISTANCE);
+
+      // Only act on state changes to avoid constant switching
+      if (detected != occupied) {
+        occupied = detected;
+        digitalWrite(relayPin, occupied ? HIGH : LOW);
+        report(distance);
+      }
+    }
+
+  private:
+    bool occupied;
+
+    // Send a 10 us pulse on TRIG, time the ECHO pulse,
+    // and convert the round-trip time into centimeters
+    int measureDistance() {
+      digitalWrite(trigPin, LOW);
+      delayMicroseconds(2);
+
+      digitalWrite(trigPin, HIGH);
+      delayMicroseconds(10);
+      digitalWrite(trigPin, LOW);
+
+      long duration = pulseIn(echoPin, HIGH, 30000);  // 30 ms timeout
+      if (duration == 0) return -1;                  // No echo received
+
+      // Sound travels ~0.034 cm per microsecond; /2 for round trip
+      return duration * 0.034 / 2;
+    }
+
+    void report(int distance) {
+      Serial.print(name);
+      Serial.print(occupied ? " - Motion Detected! " : " - Clear. ");
+      if (occupied) {
+        Serial.print("Distance: ");
+        Serial.print(distance);
+        Serial.print(" cm");
+      }
+      Serial.println(occupied ? " - LIGHT ON" : "- LIGHT OFF");
+    }
+};
+
+// ============================================================
+// Zone instances
+// Pin assignments: TRIG / ECHO / RELAY per zone.
+// Demo model: only the study area was active.
+// ============================================================
+const int NUM_ZONES = 3;
+
+MotionZone zones[NUM_ZONES] = {
+  MotionZone("Bed Area",      2, 3, 4,  false),
+  MotionZone("Cupboard Area", 5, 6, 7,  false),
+  MotionZone("Study Area",    8, 9, 10, true )
+};
 
 // ---------- One-time setup ----------
 void setup() {
   Serial.begin(9600);
 
   for (int i = 0; i < NUM_ZONES; i++) {
-    pinMode(trigPins[i], OUTPUT);
-    pinMode(echoPins[i], INPUT);
-    pinMode(relayPins[i], OUTPUT);
-    digitalWrite(relayPins[i], LOW);  // All lights start OFF
+    zones[i].begin();
   }
 
   Serial.println("Smart Beam - Zoned Motion Lighting Ready");
@@ -50,48 +120,7 @@ void setup() {
 // ---------- Main loop ----------
 void loop() {
   for (int i = 0; i < NUM_ZONES; i++) {
-    if (!zoneEnabled[i]) continue;
-
-    int distance = measureDistance(trigPins[i], echoPins[i]);
-    bool occupied = (distance > 0 && distance <= DETECTION_DISTANCE);
-
-    if (occupied != zoneOccupied[i]) {
-      zoneOccupied[i] = occupied;
-      digitalWrite(relayPins[i], occupied ? HIGH : LOW);
-
-      Serial.print(zoneNames[i]);
-      Serial.print(occupied ? " - Motion Detected! " : " - Clear. ");
-      if (occupied) {
-        Serial.print("Distance: ");
-        Serial.print(distance);
-        Serial.print(" cm");
-      }
-      Serial.println(occupied ? " - LIGHT ON" : "- LIGHT OFF");
-    }
+    zones[i].update();
   }
-
   delay(CHECK_INTERVAL);
-}
-
-// ---------- Ultrasonic distance measurement ----------
-int measureDistance(int trigPin, int echoPin) {
-  // Clear the trigger pin
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-
-  // Send a 10 us pulse to trigger the sensor
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-
-  // Read how long the echo pin stays HIGH (in microseconds)
-  long duration = pulseIn(echoPin, HIGH, 30000);  // 30 ms timeout
-
-  // No echo received -> no valid measurement
-  if (duration == 0) {
-    return -1;
-  }
-
-  // Sound travels ~0.034 cm per microsecond; divide by 2 for round trip
-  return duration * 0.034 / 2;
 }
