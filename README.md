@@ -177,7 +177,5 @@ a room into zones — bed area, cupboard area, and study area — each with its
 own sensor and light, the system illuminates only the area a person is
 actually in, while the OOP-based design keeps the code modular and scalable.
 
-## Authors
 
-- Shazia Fayaz
 
